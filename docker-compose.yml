@@ -1,0 +1,187 @@
+services:
+
+  # ============================================================
+  # PostgreSQL
+  # ============================================================
+  postgres:
+    image: postgres:18
+    container_name: lankaspot-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: lankaspot
+      POSTGRES_USER: lankaspot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    networks:
+      - lankaspot-network
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U lankaspot -d lankaspot"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ============================================================
+  # Keycloak
+  # ============================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: lankaspot-keycloak
+    restart: unless-stopped
+
+    command: start-dev
+
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/lankaspot
+      KC_DB_USERNAME: lankaspot
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - lankaspot-network
+
+
+  # ============================================================
+  # Redis
+  # ============================================================
+  redis:
+    image: redis:8
+    container_name: lankaspot-redis
+    restart: unless-stopped
+
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+    volumes:
+      - redis_data:/data
+
+    networks:
+      - lankaspot-network
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ============================================================
+  # Kafka
+  # ============================================================
+  kafka:
+    image: apache/kafka:4.1.0
+    container_name: lankaspot-kafka
+    restart: unless-stopped
+
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+
+    environment:
+
+      # ---------- KRaft ----------
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # ---------- Listeners ----------
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        CONTROLLER:PLAINTEXT,
+        INTERNAL:SASL_PLAINTEXT,
+        EXTERNAL:SASL_PLAINTEXT
+
+      KAFKA_LISTENERS: >-
+        CONTROLLER://:9093,
+        INTERNAL://:29092,
+        EXTERNAL://:9092
+
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka:29092,
+        EXTERNAL://localhost:9092
+
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # ---------- SASL ----------
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+
+      KAFKA_LISTENER_NAME_INTERNAL_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_INTERNAL_USERNAME}"
+        password="${KAFKA_INTERNAL_PASSWORD}"
+        user_${KAFKA_INTERNAL_USERNAME}="${KAFKA_INTERNAL_PASSWORD}";
+
+      KAFKA_LISTENER_NAME_EXTERNAL_PLAIN_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${KAFKA_EXTERNAL_USERNAME}"
+        password="${KAFKA_EXTERNAL_PASSWORD}"
+        user_${KAFKA_EXTERNAL_USERNAME}="${KAFKA_EXTERNAL_PASSWORD}";
+
+      # ---------- Single broker ----------
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    networks:
+      - lankaspot-network
+
+
+# ==============================================================
+# Network
+# ==============================================================
+networks:
+  lankaspot-network:
+    name: lankaspot-network
+    driver: bridge
+
+
+# ==============================================================
+# Persistent storage
+# ==============================================================
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
