@@ -9,15 +9,18 @@ services:
     restart: unless-stopped
 
     environment:
-      POSTGRES_DB: lankaspot
-      POSTGRES_USER: lankaspot
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+      LANKASPOT_DB_PASSWORD: ${LANKASPOT_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
 
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
 
     networks:
       - lankaspot-network
@@ -26,7 +29,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U lankaspot -d lankaspot"
+          "pg_isready -U postgres -d postgres"
         ]
       interval: 10s
       timeout: 5s
@@ -48,9 +51,9 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
 
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/lankaspot
-      KC_DB_USERNAME: lankaspot
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
 
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
