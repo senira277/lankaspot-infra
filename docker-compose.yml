@@ -44,7 +44,7 @@ services:
     container_name: lankaspot-keycloak
     restart: unless-stopped
 
-    command: start-dev
+    command: start-dev --import-realm
 
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
@@ -64,6 +64,11 @@ services:
 
     networks:
       - lankaspot-network
+    # for exporting realm configuration, uncomment the following lines and adjust the path as needed
+    # volumes:
+    #   - ./keycloak/realm:/opt/keycloak/data/export
+    volumes:
+    - ./keycloak/realm:/opt/keycloak/data/import
 
 
   # ============================================================
